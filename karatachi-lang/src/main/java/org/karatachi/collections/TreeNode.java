@@ -1,5 +1,9 @@
 package org.karatachi.collections;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.ObjectStreamException;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -7,14 +11,18 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.TreeMap;
 
+import org.slf4j.LoggerFactory;
+
 public class TreeNode<T extends Serializable & Comparable<? super T>>
         implements Serializable, Comparable<TreeNode<T>> {
     private static final long serialVersionUID = 1L;
 
     private final T value;
+    private transient T tempValue;
     private List<TreeNode<T>> parents;
     private List<TreeNode<T>> children;
     private boolean unmodifiable;
+    private INodeFinder<T> finder;
 
     public TreeNode(T value) {
         if (value == null) {
@@ -24,6 +32,14 @@ public class TreeNode<T extends Serializable & Comparable<? super T>>
         this.value = value;
         this.parents = new ArrayList<TreeNode<T>>();
         this.children = new ArrayList<TreeNode<T>>();
+    }
+    
+    public INodeFinder<T> getNodeFinder() {
+        return finder;
+    }
+
+    public void setNodeFinder(INodeFinder<T> finder) {
+        this.finder = finder;
     }
 
     @Override
@@ -62,7 +78,7 @@ public class TreeNode<T extends Serializable & Comparable<? super T>>
     public List<TreeNode<T>> getChildren() {
         return children;
     }
-
+    
     public void setUnmodifiable() {
         if (unmodifiable) {
             return;
@@ -202,5 +218,35 @@ public class TreeNode<T extends Serializable & Comparable<? super T>>
             dest.addChild(duplicateTreeFlat(child, creator));
         }
         return dest;
+    }
+    
+    private void writeObject(ObjectOutputStream out) throws IOException {
+        out.writeBoolean(unmodifiable);
+        out.writeObject(finder);
+        if(unmodifiable == false || finder == null){
+            out.defaultWriteObject();
+        } else {
+            LoggerFactory.getLogger(getClass()).debug("writeObject: " + value.toString());
+            out.writeObject(value);
+        }
+    }
+    
+    @SuppressWarnings("unchecked")
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        this.unmodifiable = in.readBoolean();
+        this.finder = (INodeFinder<T>) in.readObject();
+        if(unmodifiable == false || finder == null){
+            in.defaultReadObject();
+        } else {
+            this.tempValue = (T) in.readObject();
+        }
+    }
+    
+    private Object readResolve() throws ObjectStreamException {
+        if(unmodifiable == false || finder == null){
+            return this;
+        } else {
+            return finder.find(tempValue);
+        }
     }
 }
